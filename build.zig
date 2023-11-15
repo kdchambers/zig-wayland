@@ -83,14 +83,8 @@ pub const Scanner = struct {
     };
 
     pub fn create(b: *Build, options: Options) *Scanner {
-        const wayland_xml_path = options.wayland_xml_path orelse blk: {
-            const pc_output = b.exec(&.{ "pkg-config", "--variable=pkgdatadir", "wayland-scanner" });
-            break :blk b.pathJoin(&.{ mem.trim(u8, pc_output, &std.ascii.whitespace), "wayland.xml" });
-        };
-        const wayland_protocols_path = options.wayland_protocols_path orelse blk: {
-            const pc_output = b.exec(&.{ "pkg-config", "--variable=pkgdatadir", "wayland-protocols" });
-            break :blk mem.trim(u8, pc_output, &std.ascii.whitespace);
-        };
+        const wayland_xml_path = options.wayland_xml_path.?;
+        const wayland_protocols_path = options.wayland_protocols_path.?;
 
         const zig_wayland_dir = fs.path.dirname(@src().file) orelse ".";
         const exe = b.addExecutable(.{
