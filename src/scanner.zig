@@ -1301,7 +1301,7 @@ fn formatCaseImpl(comptime case: Case, comptime trim: bool) type {
                 return;
             }
             var upper = case == .title;
-            var str = if (trim) trimPrefix(bytes) else bytes;
+            const str = if (trim) trimPrefix(bytes) else bytes;
             for (str) |c| {
                 if (c == '_') {
                     upper = true;

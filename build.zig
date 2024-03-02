@@ -80,16 +80,54 @@ pub const Scanner = struct {
         /// Path to the wayland-protocols installation.
         /// If null, the output of `pkg-config --variable=pkgdatadir wayland-protocols` will be used.
         wayland_protocols_path: ?[]const u8 = null,
+        target: Build.ResolvedTarget,
     };
 
-    pub fn create(b: *Build, options: Options) *Scanner {
-        const wayland_xml_path = options.wayland_xml_path.?;
-        const wayland_protocols_path = options.wayland_protocols_path.?;
+    pub fn create(b: *Build, options: Options) !*Scanner {
+        const wayland_xml_path = options.wayland_xml_path orelse blk: {
+            const process_result = std.ChildProcess.run(.{
+                .allocator = b.allocator,
+                .argv = &.{ "pkg-config", "--variable=pkgdatadir", "wayland-scanner" },
+            }) catch return error.MissingWaylandScanner;
+
+            const was_success: bool = blk2: {
+                switch (process_result.term) {
+                    .Exited => |code| break :blk2 code == 0,
+                    else => break :blk2 false,
+                }
+            };
+
+            if (!was_success) {
+                return error.WaylandScannerFailed;
+            }
+
+            break :blk b.pathJoin(&.{ mem.trim(u8, process_result.stdout, &std.ascii.whitespace), "wayland.xml" });
+        };
+        const wayland_protocols_path = options.wayland_protocols_path orelse blk: {
+            const process_result = std.ChildProcess.run(.{
+                .allocator = b.allocator,
+                .argv = &.{ "pkg-config", "--variable=pkgdatadir", "wayland-protocols" },
+            }) catch return error.MissingWaylandScanner;
+
+            const was_success: bool = blk2: {
+                switch (process_result.term) {
+                    .Exited => |code| break :blk2 code == 0,
+                    else => break :blk2 false,
+                }
+            };
+
+            if (!was_success) {
+                return error.WaylandScannerFailed;
+            }
+            break :blk mem.trim(u8, process_result.stdout, &std.ascii.whitespace);
+        };
 
         const zig_wayland_dir = fs.path.dirname(@src().file) orelse ".";
         const exe = b.addExecutable(.{
             .name = "zig-wayland-scanner",
             .root_source_file = .{ .path = b.pathJoin(&.{ zig_wayland_dir, "src/scanner.zig" }) },
+            .target = options.target,
+            .optimize = .ReleaseSafe,
         });
 
         const run = b.addRunArtifact(exe);
