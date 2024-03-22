@@ -21,6 +21,13 @@ pub fn build(b: *Build) !void {
         }
     }
 
+    const system_protocols_opt = b.option([]const []const u8, "system_protocols", "System protocols to add");
+    if (system_protocols_opt) |system_protocols| {
+        for (system_protocols) |protocol| {
+            scanner.addSystemProtocol(protocol);
+        }
+    }
+
     const interfaces_opt = b.option([]const []const u8, "generate_interfaces", "Wayland Interfaces to generate");
     if (interfaces_opt) |interfaces| {
         for (interfaces) |interface_tuple| {
