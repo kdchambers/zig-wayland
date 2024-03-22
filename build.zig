@@ -3,18 +3,41 @@ const Build = std.Build;
 const fs = std.fs;
 const mem = std.mem;
 
-pub fn build(b: *Build) void {
+pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const scanner = Scanner.create(b, .{});
+    const scanner = try Scanner.create(b, .{
+        .target = target,
+    });
 
-    const wayland = b.createModule(.{ .source_file = scanner.result });
+    const wayland = b.addModule("zig_wayland", .{ .root_source_file = scanner.result });
 
-    scanner.generate("wl_compositor", 1);
-    scanner.generate("wl_shm", 1);
-    scanner.generate("wl_seat", 2);
-    scanner.generate("wl_output", 1);
+    const custom_protocols_opt = b.option([]const []const u8, "custom_protocols", "Custom protocols to add");
+
+    if (custom_protocols_opt) |custom_protocols| {
+        for (custom_protocols) |protocol| {
+            scanner.addCustomProtocol(protocol);
+        }
+    }
+
+    const interfaces_opt = b.option([]const []const u8, "generate_interfaces", "Wayland Interfaces to generate");
+    if (interfaces_opt) |interfaces| {
+        for (interfaces) |interface_tuple| {
+            var itr = std.mem.splitSequence(u8, interface_tuple, " ");
+            const interface_name = itr.first();
+            const interface_version_string = itr.next() orelse unreachable;
+            const interface_version = std.fmt.charToDigit(interface_version_string[0], 10) catch unreachable;
+            scanner.generate(interface_name, interface_version);
+        }
+    }
+
+    for (scanner.c_sources.items) |c_source| {
+        wayland.addCSourceFile(.{
+            .file = c_source,
+            .flags = &.{ "-std=c99", "-O2" },
+        });
+    }
 
     inline for ([_][]const u8{ "globals", "list", "listener", "seats" }) |example| {
         const exe = b.addExecutable(.{
@@ -24,8 +47,7 @@ pub fn build(b: *Build) void {
             .optimize = optimize,
         });
 
-        exe.addModule("wayland", wayland);
-        scanner.addCSource(exe);
+        exe.root_module.addImport("wayland", wayland);
         exe.linkLibC();
         exe.linkSystemLibrary("wayland-client");
 
@@ -40,7 +62,7 @@ pub fn build(b: *Build) void {
             .optimize = optimize,
         });
 
-        scanner_tests.addModule("wayland", wayland);
+        scanner_tests.root_module.addImport("wayland", wayland);
 
         test_step.dependOn(&scanner_tests.step);
     }
@@ -51,8 +73,7 @@ pub fn build(b: *Build) void {
             .optimize = optimize,
         });
 
-        ref_all.addModule("wayland", wayland);
-        scanner.addCSource(ref_all);
+        ref_all.root_module.addImport("wayland", wayland);
         ref_all.linkLibC();
         ref_all.linkSystemLibrary("wayland-client");
         ref_all.linkSystemLibrary("wayland-server");
